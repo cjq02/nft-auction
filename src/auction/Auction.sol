@@ -11,8 +11,8 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/se
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AggregatorV3Interface} from "chainlink-brownie-contracts/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-import {IAuction} from "../interface/IAuction.sol";
-import {PriceConverter} from "./PriceConverter.sol";
+import {IAuction} from "../interfaces/IAuction.sol";
+import {PriceConverter} from "../libraries/PriceConverter.sol";
 
 /**
  * @title Auction

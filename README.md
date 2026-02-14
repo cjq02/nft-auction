@@ -32,18 +32,19 @@
 ## 项目结构
 
 ```
-nft-auction-market/
+nft-auction/
 ├── src/                           # 智能合约源代码
-│   ├── interface/                 # 接口定义
+│   ├── interfaces/                # 接口定义
 │   │   ├── IAuction.sol          # 拍卖合约接口
 │   │   └── INFTMarketplace.sol   # NFT 市场接口
 │   ├── nft/                      # NFT 合约
 │   │   └── NFTMarketplace.sol    # NFT 市场合约（ERC721）
+│   ├── libraries/                # 工具库
+│   │   └── PriceConverter.sol    # Chainlink 价格转换库
 │   └── auction/                  # 拍卖合约
 │       ├── Auction.sol           # 拍卖合约基类（抽象）
 │       ├── AuctionV1.sol         # V1 版本（固定手续费 2.5%）
-│       ├── AuctionV2.sol         # V2 版本（动态手续费）
-│       └── PriceConverter.sol    # Chainlink 价格转换库
+│       └── AuctionV2.sol         # V2 版本（动态手续费）
 │
 ├── test/                         # 测试文件
 │   ├── nft/
@@ -61,14 +62,16 @@ nft-auction-market/
 │   └── Interact.s.sol            # 合约交互脚本
 │
 ├── doc/                          # 文档
+│   ├── TEST_REPORT.md            # 测试报告
 │   ├── 提交内容指南.md
+│   ├── 提交内容模板.md
 │   ├── 测试网部署指南.md
 │   ├── 线上测试操作指南.md
-│   └── 提交内容模板.md
+│   ├── 重新部署更新清单.md
+│   └── IPFS元数据上传指南.md
 │
 ├── foundry.toml                  # Foundry 配置文件
-├── README.md                     # 项目文档
-└── TEST_REPORT.md                # 测试报告
+└── README.md                     # 项目文档
 ```
 
 ---
@@ -130,9 +133,11 @@ AuctionV1 / AuctionV2
 |-----|------|
 | `setTokenPriceFeed(address, address)` | 设置 ERC20 代币的价格预言机 |
 | `setFeeRate(uint256)` | 设置手续费率（V1） |
-| `setFeeTier(uint256, uint256, uint256)` | 设置动态手续费层级（V2） |
 | `setFeeRecipient(address)` | 设置手续费接收者 |
 | `upgradeTo(address)` | 升级合约实现 |
+| `addFeeTier(uint256, uint256)` | 添加手续费层级（V2） |
+| `updateFeeTier(uint256, uint256, uint256)` | 更新手续费层级（V2） |
+| `removeFeeTier(uint256)` | 移除手续费层级（V2） |
 
 ---
 
@@ -151,13 +156,15 @@ AuctionV1 / AuctionV2
 
 拍卖合约 V2 版本，实现**动态手续费层级**（额外挑战功能）。
 
-**手续费层级**:
+**管理函数**: `addFeeTier`, `updateFeeTier`, `removeFeeTier`, `getFeeTiers`
 
-| 拍卖成交金额 | 手续费率 |
-|-------------|---------|
-| < 1,000 USD | **3%** |
-| 1,000 - 10,000 USD | **2.5%** |
-| > 10,000 USD | **2%** |
+**示例配置**（可自定义）:
+
+| 拍卖成交金额 (USD) | 手续费率 |
+|-------------------|---------|
+| < 1,000 | 3% |
+| 1,000 - 10,000 | 2.5% |
+| > 10,000 | 2% |
 
 **特点**:
 - 根据成交金额自动调整费率
@@ -168,13 +175,16 @@ AuctionV1 / AuctionV2
 
 ### 5. PriceConverter.sol
 
-Chainlink 价格转换工具库。
+Chainlink 价格转换工具库，将 ETH 和 ERC20 出价统一换算为 USD。
 
 **功能**:
-- `getETHPrice()` - 获取 ETH/USD 价格
-- `getETHAmountInUSD(uint256)` - 将 ETH 金额转换为 USD
-- `getTokenAmountInUSD(uint256)` - 将 ERC20 金额转换为 USD
-- `compareBids(...)` - 比较两个出价的 USD 价值
+- `getETHPrice(priceFeed)` - 从 Chainlink 预言机获取价格
+- `getETHAmountInUSD(priceFeed, amount)` - 将 ETH 金额转换为 USD
+- `getTokenAmountInUSD(priceFeed, amount)` - 将 ERC20 金额转换为 USD
+- `getUSDValue(BidValue)` - 统一入口，根据出价类型自动转换
+- `compareBids(bid1, bid2)` - 比较两个出价的 USD 价值
+- `ethBid(amount, priceFeed)` - 构造 ETH 出价
+- `tokenBid(amount, priceFeed)` - 构造 Token 出价
 
 ---
 
@@ -204,8 +214,8 @@ Chainlink 价格转换工具库。
 
 2. **克隆项目**
    ```bash
-   git clone https://github.com/cjq02/solidity-task.git
-   cd solidity-task/task3/nft-auction-market
+   git clone <repository-url>
+   cd nft-auction
    ```
 
 3. **安装依赖**
@@ -221,15 +231,6 @@ Chainlink 价格转换工具库。
 # 编译所有合约
 forge build
 
-# 查看编译输出
-ls -la out/
-```
-
-![forge-build](./img/forge-build.png)
-
-**编译输出示例**:
-```
-Compiler run successful
 ```
 
 ---
@@ -245,15 +246,6 @@ forge test --gas-report
 
 # 生成测试覆盖率报告
 forge coverage
-```
-
-**测试输出示例**:
-```
-Running 3 tests for test/NFTMarketplace.t.sol
-[PASS] testInitialization() (gas: 285432)
-[PASS] testMint() (gas: 156789)
-[PASS] testBurn() (gas: 45123)
-Test result: ok. 3 passed; 0 failed; finished
 ```
 
 ---
@@ -281,7 +273,6 @@ Infura 是 ConsenSys（MetaMask 母公司）提供的免费 RPC 服务，操作�
 
    **注意**：免费计划通常只提供一个 API Key。如果已经有一个 API Key，继续使用现有的即可，无需创建新的。
 
-![infura-rpc-url](./img/infura-rpc-url.png)
 ---
 
 ##### 1.2 获取 Etherscan API Key
@@ -292,8 +283,6 @@ Infura 是 ConsenSys（MetaMask 母公司）提供的免费 RPC 服务，操作�
 4. 滚动到 **"API Keys"** 部分
 5. 点击 **"Add"** 添加新 API Key
 6. 复制 **API Key Token**（是一串 32 位字符）
-
-![etherscan-api-key](./img/etherscan-api-key.png)
 
 ---
 
@@ -309,8 +298,6 @@ Infura 是 ConsenSys（MetaMask 母公司）提供的免费 RPC 服务，操作�
    - 格式：64 位十六进制字符
    - 示例：`abc123...789`（不带 0x 前缀）或 `0xabc123...789`（带 0x 前缀）
    - 在 `.env` 文件中使用时，**去掉 0x 前缀**
-
-![private-key](./img/private-key.png)
 
 **安全提示** ⚠️：
 - **永远不要**将私钥提交到 Git 仓库
@@ -356,23 +343,6 @@ forge script script/deploy/DeployNFT.s.sol \
   --delay 15
 ```
 
-![deploy-nft](./img/deploy-nft.png)
-
-**部署信息**:
-
-| 项目 | 值 |
-|-----|---|
-| 合约地址 | `0xD10C1D86c01dFec8927f5fd76f9c90B07c24A106` |
-| 交易哈希 | `0x631792dcd002c99d3b0deca7d4b63f6b26a875e84de9c9d939fd88c72e3493e1` |
-| Etherscan | [查看合约](https://sepolia.etherscan.io/address/0xD10C1D86c01dFec8927f5fd76f9c90B07c24A106) |
-
-**部署命令说明**:
-- `--rpc-url`: RPC 端点
-- `--broadcast`: 广播交易到区块链
-- `--verify`: 在 Etherscan 上验证合约
-- `--etherscan-api-key`: Etherscan API 密钥
-- `--delay 15`: 每次交易之间延迟 15 秒
-
 ---
 
 #### 4. 部署拍卖合约（V1）
@@ -387,30 +357,6 @@ forge script script/deploy/DeployAuction.s.sol \
   --delay 15
 ```
 
-![deploy-auction1](./img/deploy-auction1.png)
-
-![deploy-auction2](./img/deploy-auction2.png)
-
-**部署信息**:
-
-| 项目 | 值 |
-|-----|---|
-| 实现合约地址 | `0x5D768CeDdE71054D6D081a92B600853102eBaD5D` |
-| 代理合约地址 | `0xbB3cA2e1Bbc7618A8D6689aCed4C201406bade45` |
-| 实现合约交易哈希 | `0x469a88304fde8e28858643f332588265d52adf768991ce2c6b14686b5963e1cb` |
-| 代理合约交易哈希 | `0x7fd0b1929d7eeee0f1b28ed8fe3b7b67a771a24ab7999b0de15fb7ec33045bc4` |
-| Etherscan | [查看代理合约](https://sepolia.etherscan.io/address/0xbB3cA2e1Bbc7618A8D6689aCed4C201406bade45) |
-
-**部署参数**:
-
-| 参数 | 值 |
-|-----|---|
-| 初始 Owner | `0x085f0145202298585e699371eb3CFb1441f65110` |
-| ETH 价格预言机 | `0x694AA1769357215DE4FAC081bf1f309aDC325306` |
-| 手续费率 | 250 (2.5%) |
-| 手续费接收者 | `0x085f0145202298585e699371eb3CFb1441f65110
-` |
-
 ---
 
 #### 5. 验证部署
@@ -419,65 +365,24 @@ forge script script/deploy/DeployAuction.s.sol \
 
 ```bash
 # 查询合约 owner
-cast call <PROXY_ADDRESS> "owner()(address)" --rpc-url $SEPOLIA_RPC_URL
+cast call $PROXY_ADDRESS "owner()(address)" --rpc-url $SEPOLIA_RPC_URL
 
 # 查询手续费率
-cast call <PROXY_ADDRESS> "feeRate()(uint256)" --rpc-url $SEPOLIA_RPC_URL
+cast call $PROXY_ADDRESS "feeRate()(uint256)" --rpc-url $SEPOLIA_RPC_URL
 
 # 查询 ETH 价格预言机
-cast call <PROXY_ADDRESS> "ethPriceFeed()(address)" --rpc-url $SEPOLIA_RPC_URL
+cast call $PROXY_ADDRESS "ethPriceFeed()(address)" --rpc-url $SEPOLIA_RPC_URL
 ```
-
-![verify-contract](./img/verify-contract.png)
 
 ---
 
 ### 合约升级（V1 → V2）
 
-#### 📖 关于 ERC-1967 存储槽
-
-本项目使用 `ERC1967Proxy`（UUPS 代理模式），实现合约地址存储在 ERC-1967 标准定义的存储槽中。
-
-**存储槽位置的计算方法：**
-
-根据 ERC-1967 标准，实现合约地址的存储槽位置计算公式为：
-
-```
-存储槽 = keccak256("eip1967.proxy.implementation") - 1
-```
-
-**计算步骤：**
-
-1. 计算字符串的 Keccak-256 哈希值：
-   ```bash
-   cast keccak "eip1967.proxy.implementation"
-   # 结果：0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbd
-   ```
-
-2. 将哈希值减去 1，得到存储槽位置：
-   ```
-   0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbd - 1
-   = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc
-   ```
-
-**为什么使用标准化的存储槽？**
-
-- ✅ 避免与实现合约的存储布局冲突
-- ✅ 确保所有遵循 ERC-1967 标准的代理合约使用相同的存储位置
-- ✅ 方便工具和前端直接读取实现地址
-
-> **注意**：`ERC1967Proxy` 没有公开的 `implementation()` 函数，因此不能使用 `cast call` 直接调用。必须通过读取存储槽来获取实现地址。
-
----
-
-#### 1. 准备升级
+#### 1. 准备升级（可选，查看当前实现地址）
 
 ```bash
-# 记录当前实现合约地址（读取 ERC-1967 存储槽）
-cast storage <PROXY_ADDRESS> 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc --rpc-url $SEPOLIA_RPC_URL | cast parse-bytes32-address
+cast storage $PROXY_ADDRESS 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc --rpc-url $SEPOLIA_RPC_URL | cast parse-bytes32-address
 ```
-
-![upgrade-prepare](./img/upgrade-prepare.png)
 
 #### 2. 执行升级
 
@@ -491,31 +396,14 @@ forge script script/upgrade/UpgradeAuction.s.sol \
   --delay 15
 ```
 
-![upgrade-execute1](./img/upgrade-execute1.png)
-
-![upgrade-execute2](./img/upgrade-execute2.png)
-
-**升级信息**:
-
-| 项目 | 值 |
-|-----|---|
-| V2 实现合约地址 | `0x8c28979080D7789fe38A868E3dbd9731C268B35b` |
-| 升级交易哈希 | `0x10c9b17b012233f4ffed890286945144baf20d4e2e0d1b18522533629349be1a` |
-| 部署交易哈希 | `0x0b357cf44ae043c383b21df6fb4c8a932fb4ee6eb86147c5ac43344d6fa6402a` |
-| Etherscan | [查看实现合约](https://sepolia.etherscan.io/address/0x8c28979080D7789fe38A868E3dbd9731C268B35b) |
-
 #### 3. 验证升级
 
 ```bash
 # 验证实现合约已更改（读取 ERC-1967 存储槽）
-cast storage <PROXY_ADDRESS> 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc --rpc-url $SEPOLIA_RPC_URL | cast parse-bytes32-address
+cast storage $PROXY_ADDRESS 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc --rpc-url $SEPOLIA_RPC_URL | cast parse-bytes32-address
 
-# 可选：调用 V2 特有函数验证（验证合约已升级到 V2）
-# 注意：getFeeTiers() 返回数组，在命令行中可能显示不完整，但可以验证函数存在
-cast call <PROXY_ADDRESS> "getFeeTiers()((uint256,uint256)[])" --rpc-url $SEPOLIA_RPC_URL
+cast call $PROXY_ADDRESS "getFeeTiers()((uint256,uint256)[])" --rpc-url $SEPOLIA_RPC_URL
 ```
-
-![verify-upgrade](./img/verify-upgrade.png)
 
 ---
 
@@ -568,19 +456,6 @@ auction.placeBidWithToken(auctionId, 500 * 10^18);
 // 拍卖时间结束后，任何人都可以调用
 auction.endAuction(auctionId);
 ```
-
----
-
-## 已部署合约信息
-
-### Sepolia 测试网
-
-| 合约 | 地址 | Etherscan |
-|-----|------|-----------|
-| NFTMarketplace | `0x41B2eA52228706FD2a1c81Ab9713A71a710072b4` | [查看](https://sepolia.etherscan.io/address/0x41B2eA52228706FD2a1c81Ab9713A71a710072b4) |
-| Auction Proxy | `0x7842104E7ad9f14eCF5aB0352bc6d9d8D6560240` | [查看](https://sepolia.etherscan.io/address/0x7842104E7ad9f14eCF5aB0352bc6d9d8D6560240) |
-| Auction Implementation (V1) | `0x4D5F655c9F1C9E6701D473CB15998a3527Ff1E28` | [查看](https://sepolia.etherscan.io/address/0x4D5F655c9F1C9E6701D473CB15998a3527Ff1E28) |
-| Auction Implementation (V2) | `0x5b6295cD578E923aF2E7ADe81d081C3259377508` | [查看](https://sepolia.etherscan.io/address/0x5b6295cD578E923aF2E7ADe81d081C3259377508) |
 
 ---
 
