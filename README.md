@@ -326,6 +326,7 @@ Infura 是 ConsenSys（MetaMask 母公司）提供的免费 RPC 服务，操作�
 | `ETHERSCAN_API_KEY` | Etherscan API 密钥 | 从 Etherscan 获取（见上文） |
 | `ETH_PRICE_FEED` | Chainlink ETH/USD 价格预言机地址 | `0x694AA1769357215DE4FAC081bf1f309aDC325306` |
 | `FEE_RECIPIENT` | 手续费接收地址 | 你的钱包地址 |
+| `PROXY_ADDRESS` | 拍卖代理合约地址 | **部署拍卖合约后填写**（升级脚本需要） |
 
 ---
 
@@ -356,6 +357,12 @@ forge script script/deploy/DeployAuction.s.sol \
   --etherscan-api-key $ETHERSCAN_API_KEY \
   --delay 15
 ```
+
+**部署完成后**，将输出中的 `Proxy deployed at: 0x...` 地址填入 `.env`：
+```
+PROXY_ADDRESS=0x你的代理合约地址
+```
+执行升级前需 `source .env` 加载该变量。
 
 ---
 
